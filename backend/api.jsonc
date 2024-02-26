@@ -1,0 +1,57 @@
+// /user
+{
+  "name": "name",
+  "id": "...",
+  "role": "doctor",
+  "patients": [
+    {
+      "name": "",
+      "id": ""
+    }
+  ]
+}
+
+// /patient/:id
+{
+    "name": "name",
+    "id": "id",
+    "images": [
+        {
+            "url": "...",
+            "timestamp": 0,
+            "id": 0
+        }
+    ] 
+}
+
+// /mapandmatch/:id1/:id2 <-- ids of images
+{
+    "lesionsA": [{
+        "x": 0,
+        "y": 0,
+        "radius": 0,
+        "match": 5 // <-- match is the index in 'lesionsB' of the matching lesion OR "null" if no match
+    }],
+
+    "lesionsB": [{
+        "x": 0,
+        "y": 0,
+        "radius": 0,
+        "match": 0 // <-- this time index in lesionsA
+    }]
+}
+
+// /lesions/:id <-- id of a patient image
+{
+    "lesions": [
+        {
+            "x": 0,
+            "y": 0,
+            "radius": 0
+        }
+    ]
+}
+
+// /upload/:patientId
+Type: multipart/form-data
+Parameters: file (binary)

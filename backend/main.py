@@ -111,11 +111,7 @@ def callback():
     if res.get("email_verified"):
         g_id = res["sub"]
         existing = getUserGoogle(g_id)
-        if existing != None:
-            # user already exists!
-            # todo: issue auth token
-            login_user(existing)
-        else:
+        if existing == None:
             # create a user
             existing = createUser(res["given_name"], "doctor", res["sub"])
 

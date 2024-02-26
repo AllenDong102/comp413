@@ -1,25 +1,76 @@
-from db import init, getSession, User, Patient, Image
+from db import getSession, User, Patient, Image
 from werkzeug.datastructures import FileStorage
+import boto3
+import uuid
+from sqlalchemy.orm import Query
 
-def createUser(name: str, role: str):
-    user = User(name=name, role=role)
+
+def createUser(name: str, role: str, googleId: str):
+    user = User(name=name, role=role, googleId=googleId)
     with getSession() as session:
         session.add(user)
-    return user.id
+    return user
 
 
 def createPatient(name: str, owner_id: int):
     patient = Patient(name=name, owner_id=owner_id)
     with getSession() as session:
         session.add(patient)
-    return patient.id
+    return patient
 
 
 def createImage(url: str, patient_id: int):
     image = Image(imageUrl=url, patient_id=patient_id)
     with getSession() as session:
         session.add(image)
-    return image.id
+    return image
+
+
+def getUser(id: int):
+    with getSession() as session:
+        return session.get(User, id)
+
+
+def getUserGoogle(googleId: str):
+    with getSession() as session:
+        return session.query(User).filter(User.googleId == googleId).one_or_none()
+
+
+def getPatient(id: int):
+    with getSession() as session:
+        return session.get(Patient, id)
+
+
+def getImage(id: int):
+    with getSession() as session:
+        return session.get(Image, id)
+
+
+def deleteUser(id: int):
+    with getSession() as session:
+        session.delete(User, id)
+
+
+def deletePatient(id: int):
+    with getSession() as session:
+        session.delete(Patient, id)
+
+
+def deleteImage(id: int):
+    with getSession() as session:
+        session.delete(Image, id)
+
 
 def uploadImage(file: FileStorage):
-    file.
+    s3 = boto3.resource("s3")
+    bucket = s3.Bucket("comp413")
+    name = str(uuid.uuid4())
+    obj = bucket.Object(name)
+    obj.put(Body=file.stream)
+    obj.wait_until_exists()
+    return name
+
+
+def createAndUploadImage(file: FileStorage, patient_id: int):
+    key = uploadImage(file)
+    return createImage(key, patient_id)

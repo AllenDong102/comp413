@@ -1,6 +1,7 @@
 import json
-from flask import Flask, redirect, request
+from flask import Flask, jsonify, redirect, request, session
 from auth import SessionUser
+from api import GetUserResponse, PatientData
 from db import init, getSession, User
 from dotenv import load_dotenv
 from service import uploadImage, getUser, createUser, getUserGoogle
@@ -41,7 +42,9 @@ def get_google_provider_cfg():
 
 @login_manager.user_loader
 def load_user(user_id):
-    # TODO: fix this
+    user = getUser(user_id)
+    if user == None:
+        return SessionUser(None, False, False, False)
     return SessionUser(getUser(user_id), True, True, False)
 
 
@@ -50,11 +53,43 @@ def hello_world():
     return "Hello!"
 
 
+# {
+#   "name": "name",
+#   "id": "...",
+#   "role": "doctor",
+#   "patients": [
+#     {
+#       "name": "",
+#       "id": ""
+#     }
+#   ]
+# }
+@app.route("/user")
+def get_user():
+    print(repr(session))
+    print(current_user.get_id())
+    if not current_user.is_authenticated:
+        return "Not authenticated", 401
+
+    return {
+        "id": current_user.user.id,
+        "name": current_user.user.name,
+        "role": current_user.user.role,
+        "patients": [{"name": p.name, "id": p.id} for p in current_user.user.patients],
+    }
+
+
 @app.route("/upload")
 def upload():
+    if not is_doctor():
+        return "Not authenticated", 401
     file = request.files["file"]
     key = uploadImage(file)
     return "Uploaded! " + key
+
+
+def is_doctor():
+    return current_user.is_authenticated and current_user.user.role == "doctor"
 
 
 @app.route("/login")
@@ -113,6 +148,7 @@ def callback():
         existing = getUserGoogle(g_id)
         if existing == None:
             # create a user
+            print("creating a user! " + res["given_name"])
             existing = createUser(res["given_name"], "doctor", res["sub"])
 
         login_user(SessionUser(existing, True, True, False))

@@ -1,4 +1,5 @@
-from sqlalchemy import create_engine, String, ForeignKey
+import logging
+from sqlalchemy import create_engine, String, ForeignKey, Identity
 from sqlalchemy.orm import DeclarativeBase, Session, Mapped, mapped_column, relationship
 from typing import List
 import os
@@ -23,7 +24,7 @@ class User(Base):
     googleId: Mapped[str] = mapped_column(String(50))
     id: Mapped[int] = mapped_column(primary_key=True)
     patients: Mapped[List["Patient"]] = relationship(
-        back_populates="owner", cascade="all, delete-orphan"
+        back_populates="owner", cascade="all, delete-orphan", lazy="joined"
     )
 
 
@@ -57,9 +58,12 @@ class Image(Base):
 
 
 def getSession():
-    return Session(engine)
+    s = Session(engine)
+    s.expire_on_commit = False
+    return s
 
 
 def init():
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
     # Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)

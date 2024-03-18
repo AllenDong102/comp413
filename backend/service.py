@@ -6,24 +6,28 @@ from sqlalchemy.orm import Query
 
 
 def createUser(name: str, role: str, googleId: str):
-    user = User(name=name, role=role, googleId=googleId)
     with getSession() as session:
+        session.expire_on_commit = False
+        user = User(name=name, role=role, googleId=googleId)
         session.add(user)
-    return user
+        session.commit()
+        return user
 
 
 def createPatient(name: str, owner_id: int):
     patient = Patient(name=name, owner_id=owner_id)
     with getSession() as session:
         session.add(patient)
-    return patient
+        session.commit()
+        return patient
 
 
 def createImage(url: str, patient_id: int):
     image = Image(imageUrl=url, patient_id=patient_id)
     with getSession() as session:
         session.add(image)
-    return image
+        session.commit()
+        return image
 
 
 def getUser(id: int):
@@ -49,16 +53,19 @@ def getImage(id: int):
 def deleteUser(id: int):
     with getSession() as session:
         session.delete(User, id)
+        session.commit()
 
 
 def deletePatient(id: int):
     with getSession() as session:
         session.delete(Patient, id)
+        session.commit()
 
 
 def deleteImage(id: int):
     with getSession() as session:
         session.delete(Image, id)
+        session.commit()
 
 
 def uploadImage(file: FileStorage):

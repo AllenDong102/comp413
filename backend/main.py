@@ -2,9 +2,9 @@ import json
 from flask import Flask, jsonify, redirect, request, session
 from auth import SessionUser
 from api import GetUserResponse, PatientData
-from db import init, getSession, User
+from db import init, getSession, User, Patient, Image
 from dotenv import load_dotenv
-from service import uploadImage, getUser, createUser, getUserGoogle
+from service import uploadImage, getUser, createUser, getUserGoogle, getPatient, getImage
 from flask_login import (
     LoginManager,
     current_user,
@@ -155,3 +155,33 @@ def callback():
         return redirect(os.getenv("FRONTEND_LOGIN_REDIRECT"))
     else:
         return "User email not available or not verified by Google.", 400
+    
+
+@app.route("/patient")
+def patient_id():
+    if not current_user.is_authenticated:
+        return "Not authenticated", 401
+    
+    id = int(request.args.get("id"))
+    patient: Patient = getPatient(id)
+    return {
+        "name": patient.name,
+        "id": patient.id,
+        "images": [{
+            "url": image.imageUrl,
+            # TODO: don't have this in the database as of right now
+            "timestamp": 0,
+            "id": image.id
+        } for image in patient.images]
+    }
+
+@app.route("/lesions")
+def get_lesion():
+    if not current_user.is_authenticated:
+        return "Not authenticated", 401
+    
+    # image id
+    id = int(request.args.get("id"))
+    image: Image = getImage(id)
+    pass
+    

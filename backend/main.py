@@ -4,7 +4,17 @@ from auth import SessionUser
 from api import GetUserResponse, PatientData
 from db import init, getSession, User, Patient, Image
 from dotenv import load_dotenv
-from service import uploadImage, getUser, createUser, getUserGoogle, getPatient, getImage
+from service import (
+    createImage,
+    getImageUrl,
+    uploadImage,
+    getUser,
+    createUser,
+    getUserGoogle,
+    getPatient,
+    getImage,
+    createPatient,
+)
 from flask_login import (
     LoginManager,
     current_user,
@@ -79,17 +89,21 @@ def get_user():
     }
 
 
-@app.route("/upload")
-def upload():
-    if not is_doctor():
-        return "Not authenticated", 401
-    file = request.files["file"]
-    key = uploadImage(file)
-    return "Uploaded! " + key
-
-
 def is_doctor():
     return current_user.is_authenticated and current_user.user.role == "doctor"
+
+
+@app.post("/upload")
+def upload():
+    # if not is_doctor():
+    #     return "Not authenticated", 401
+    id = int(request.args.get("id"))
+
+    file = request.files["file"]
+    key = uploadImage(file)
+    img = createImage(key, id)
+
+    return {"id": img.id, "url": getImageUrl(img.imageUrl)}
 
 
 @app.route("/login")
@@ -155,33 +169,53 @@ def callback():
         return redirect(os.getenv("FRONTEND_LOGIN_REDIRECT"))
     else:
         return "User email not available or not verified by Google.", 400
-    
 
-@app.route("/patient")
+
+@app.post("/patient")
+def create_patient():
+    if not is_doctor():
+        return "Not authenticated", 401
+
+    name = request.json["name"]
+
+    created = createPatient(name, current_user.user.id)
+    return {"id": created.id}
+
+
+@app.get("/patient")
 def patient_id():
     if not current_user.is_authenticated:
         return "Not authenticated", 401
-    
+
     id = int(request.args.get("id"))
     patient: Patient = getPatient(id)
+
+    if patient == None:
+        return "Not found", 404
+
+    if patient.owner_id != current_user.user.id:
+        return "Not found", 404
+
     return {
         "name": patient.name,
         "id": patient.id,
-        "images": [{
-            "url": image.imageUrl,
-            # TODO: don't have this in the database as of right now
-            "timestamp": 0,
-            "id": image.id
-        } for image in patient.images]
+        "images": [
+            {
+                "url": getImageUrl(image.imageUrl),
+                "timestamp": image.timestamp,
+                "id": image.id,
+            }
+            for image in patient.images
+        ],
     }
+
 
 @app.route("/lesions")
 def get_lesion():
     if not current_user.is_authenticated:
         return "Not authenticated", 401
-    
+
     # image id
     id = int(request.args.get("id"))
     image: Image = getImage(id)
     pass
-    

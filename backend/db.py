@@ -1,5 +1,5 @@
 import logging
-from sqlalchemy import create_engine, String, ForeignKey, Identity
+from sqlalchemy import create_engine, String, ForeignKey, Identity, DateTime, func
 from sqlalchemy.orm import DeclarativeBase, Session, Mapped, mapped_column, relationship
 from typing import List
 import os
@@ -37,7 +37,7 @@ class Patient(Base):
     owner: Mapped["User"] = relationship(back_populates="patients")
 
     images: Mapped[List["Image"]] = relationship(
-        back_populates="patient", cascade="all, delete-orphan"
+        back_populates="patient", cascade="all, delete-orphan", lazy="joined"
     )
 
     def __repr__(self):
@@ -48,7 +48,8 @@ class Image(Base):
     __tablename__ = "image"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    imageUrl: Mapped[String] = mapped_column(String(64))
+    imageUrl: Mapped[String] = mapped_column(String(1000))
+    timestamp: Mapped[DateTime] = mapped_column(DateTime(), server_default=func.now())
     patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"))
 
     patient: Mapped["Patient"] = relationship(back_populates="images")

@@ -3,6 +3,7 @@ from werkzeug.datastructures import FileStorage
 import boto3
 import uuid
 from sqlalchemy.orm import Query
+from botocore.client import Config
 
 
 def createUser(name: str, role: str, googleId: str):
@@ -75,7 +76,18 @@ def uploadImage(file: FileStorage):
     obj = bucket.Object(name)
     obj.put(Body=file.stream)
     obj.wait_until_exists()
+
     return name
+
+
+def getImageUrl(name: str):
+    s3_client = boto3.client(
+        "s3", config=Config(signature_version="s3v4", region_name="us-east-2")
+    )
+    url = s3_client.generate_presigned_url(
+        "get_object", Params={"Bucket": "comp413", "Key": name}, ExpiresIn=3600
+    )
+    return url
 
 
 def createAndUploadImage(file: FileStorage, patient_id: int):

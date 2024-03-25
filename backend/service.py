@@ -1,9 +1,18 @@
+import io
+from numpy import asarray
 from db import getSession, User, Patient, Image
 from werkzeug.datastructures import FileStorage
 import boto3
 import uuid
 from sqlalchemy.orm import Query
 from botocore.client import Config
+from detectron2 import model_zoo
+from detectron2.engine import DefaultPredictor
+from detectron2.config import get_cfg
+from detectron2.utils.visualizer import Visualizer
+from detectron2.data import MetadataCatalog, DatasetCatalog
+from PIL import Image as Image2
+from skimage.measure import regionprops, label
 
 
 def createUser(name: str, role: str, googleId: str):
@@ -93,3 +102,66 @@ def getImageUrl(name: str):
 def createAndUploadImage(file: FileStorage, patient_id: int):
     key = uploadImage(file)
     return createImage(key, patient_id)
+
+
+def downloadImg(img: Image):
+    s3 = boto3.client("s3")
+    buf = io.BytesIO()
+    s3.download_fileobj("comp413", img.imageUrl, buf)
+    return asarray(Image2.open(buf))
+
+
+def getLesions(image_id: int):
+    img = getImage(image_id)
+    if img == None:
+        return None
+
+    # download image somehow
+    im = downloadImg(img)
+
+    predictor = get_lesion_predictor()
+    outputs = predictor(im)
+
+    # Convert the predicted mask to a binary mask
+    mask = outputs["instances"].pred_masks.to("cpu").numpy().astype(bool)
+    class_labels = outputs["instances"].pred_classes.to("cpu").numpy()
+
+    # Use skimage.measure.regionprops to calculate object parameters
+    labeled_mask = label(mask)
+    props = regionprops(labeled_mask)
+
+    # Write the object-level information to the CSV file
+    for i, prop in enumerate(props):
+        object_number = i + 1  # Object number starts from 1
+        area = prop.area
+        centroid = prop.centroid
+        bounding_box = prop.bbox
+
+        # Check if the corresponding class label exists
+        if i < len(class_labels):
+            class_label = class_labels[i]
+            class_name = class_label
+            # class_name = train_metadata.thing_classes[class_label]
+        else:
+            # If class label is not available (should not happen), use 'Unknown' as class name
+            class_name = "Unknown"
+
+        # Write the object-level information to the CSV file
+        print(class_name, object_number, area, centroid, bounding_box)
+    return "Yay!"
+
+
+def get_lesion_predictor():
+    cfg = get_cfg()
+    cfg.merge_from_file("./models/detection_model/config.yaml")
+    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.2
+    cfg.MODEL.WEIGHTS = "./models/detection_model/model.pth"
+    return DefaultPredictor(cfg)
+
+
+def get_segmentation_predictor():
+    cfg = get_cfg()
+    cfg.merge_from_file("./models/segmentation_model/config.yaml")
+    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.2
+    cfg.MODEL.WEIGHTS = "./models/segmentation_model/model.pth"
+    return DefaultPredictor(cfg)

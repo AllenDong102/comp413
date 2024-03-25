@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from service import (
     createImage,
     getImageUrl,
+    getLesions,
     uploadImage,
     getUser,
     createUser,
@@ -31,6 +32,7 @@ load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
+
 app.secret_key = (
     b"\x10r=\xf7Z\xbe\xaf2\xc7\xeb\x0b\xab\xda\xb8\xc7\x1a\x96~\x9e\xae\x0bXlk"
 )
@@ -64,6 +66,12 @@ def load_user(user_id):
 @app.route("/")
 def hello_world():
     return "Hello!"
+
+
+@app.route("/lesion")
+def run_model():
+    id = int(request.args.get("id"))
+    return getLesions(id)
 
 
 # {

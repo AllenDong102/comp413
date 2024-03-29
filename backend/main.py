@@ -1,11 +1,15 @@
+import asyncio
 import json
-from flask import Flask, jsonify, redirect, request, session
+import threading
+from flask import Flask, Response, jsonify, redirect, request, session
+from dotenv import load_dotenv
 from auth import SessionUser
 from api import GetUserResponse, PatientData
+from bkg import celery_init_app
 from db import init, getSession, User, Patient, Image
-from dotenv import load_dotenv
 from service import (
     createImage,
+    downloadLesionInfo,
     getImageUrl,
     getLesions,
     uploadImage,
@@ -15,6 +19,7 @@ from service import (
     getPatient,
     getImage,
     createPatient,
+    uploadLesionInfo,
 )
 from flask_login import (
     LoginManager,
@@ -39,6 +44,12 @@ app.secret_key = (
 app.config["SESSION_COOKIE_SAMESITE"] = "None"
 
 init()
+# app.config.from_mapping(
+#     CELERY=dict(
+#         task_ignore_result=True,
+#     ),
+# )
+# celery_app = celery_init_app(app)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -68,10 +79,21 @@ def hello_world():
     return "Hello!"
 
 
+# {
+#     "lesions": [
+#         {
+#             "x": 0,
+#             "y": 0,
+#             "radius": 0
+#         }
+#     ]
+# }
 @app.route("/lesion")
 def run_model():
     id = int(request.args.get("id"))
-    return getLesions(id)
+    img = getImage(id)
+
+    return Response(downloadLesionInfo(img), mimetype="application/json")
 
 
 # {
@@ -114,7 +136,33 @@ def upload():
     key = uploadImage(file)
     img = createImage(key, id)
 
+    # detect the lesions
+    def process():
+        processLesions(img)
+
+    thread = threading.Thread(target=process)
+    thread.start()
+
     return {"id": img.id, "url": getImageUrl(img.imageUrl)}
+
+
+def processLesions(img: Image):
+    lesions = getLesions(img.id)
+
+    jsonData = {
+        "lesions": [
+            {
+                "x": float(lesion.centroid[1]),
+                "y": float(lesion.centroid[0]),
+                "radius": float(lesion.get_radius()),
+                "bodyPart": int(lesion.body_part),
+                "id": lesion.id,
+            }
+            for lesion in lesions
+        ]
+    }
+
+    uploadLesionInfo(img.imageUrl + ".lesions.json", json.dumps(jsonData))
 
 
 @app.route("/login")

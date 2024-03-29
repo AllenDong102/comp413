@@ -1,5 +1,5 @@
 import io
-from numpy import asarray
+from numpy import asarray, float64
 from db import getSession, User, Patient, Image
 from werkzeug.datastructures import FileStorage
 import boto3
@@ -13,6 +13,57 @@ from detectron2.utils.visualizer import Visualizer
 from detectron2.data import MetadataCatalog, DatasetCatalog
 from PIL import Image as Image2
 from skimage.measure import regionprops, label
+from typing import List
+
+
+class DetectedObject:
+    object_number: int
+    area: float64
+    centroid: tuple[float]
+    bounding_box: tuple[int]
+    class_tag: str
+
+    def __init__(self, object_number: int, area, centroid, bounding_box, class_tag):
+        self.object_number = object_number
+        self.area = area
+        self.centroid = (centroid[1], centroid[2])
+        self.bounding_box = (
+            bounding_box[1],
+            bounding_box[2],
+            bounding_box[4],
+            bounding_box[5],
+        )
+        self.class_tag = class_tag
+
+    def __str__(self) -> str:
+        return f"DetectedObject(object_number: {self.object_number}, area: {self.area}, centroid: {self.centroid}, bounding_box: {self.bounding_box}, class_tag: {self.class_tag})"
+
+
+class Lesion:
+    id: int
+    body_part: int
+    area: float64
+    centroid: tuple[float]
+    bounding_box: tuple[int]
+
+    def __init__(self, id, area, centroid, bounding_box, body_part):
+        # 0 = torso
+        # 1 = left leg
+        # 2 = either arm
+        # 3 = right leg
+        self.id = id
+        self.area = area
+        self.centroid = centroid
+        self.bounding_box = bounding_box
+        self.body_part = body_part
+
+    def get_radius(self):
+        x_len = self.bounding_box[2] - self.bounding_box[0]
+        y_len = self.bounding_box[3] - self.bounding_box[1]
+        return (((x_len / 2) ** 2) + ((y_len / 2) ** 2)) ** 0.5
+
+    def __str__(self) -> str:
+        return f"Lesion(id: {self.id}, area: {self.area}, centroid: {self.centroid}, bounding_box: {self.bounding_box}, body_part: {self.body_part})"
 
 
 def createUser(name: str, role: str, googleId: str):
@@ -89,6 +140,14 @@ def uploadImage(file: FileStorage):
     return name
 
 
+def uploadLesionInfo(key: str, data: str):
+    s3 = boto3.resource("s3")
+    bucket = s3.Bucket("comp413")
+    obj = bucket.Object(key)
+    obj.put(Body=data.encode("utf-8"))
+    obj.wait_until_exists()
+
+
 def getImageUrl(name: str):
     s3_client = boto3.client(
         "s3", config=Config(signature_version="s3v4", region_name="us-east-2")
@@ -102,6 +161,13 @@ def getImageUrl(name: str):
 def createAndUploadImage(file: FileStorage, patient_id: int):
     key = uploadImage(file)
     return createImage(key, patient_id)
+
+
+def downloadLesionInfo(img: Image):
+    s3 = boto3.client("s3")
+    buf = io.BytesIO()
+    s3.download_fileobj("comp413", img.imageUrl + ".lesions.json", buf)
+    return buf.getvalue().decode("utf-8")
 
 
 def downloadImg(img: Image):
@@ -119,8 +185,74 @@ def getLesions(image_id: int):
     # download image somehow
     im = downloadImg(img)
 
-    predictor = get_lesion_predictor()
-    outputs = predictor(im)
+    lesionPred = get_lesion_predictor()
+    segmentPred = get_segmentation_predictor()
+
+    lesions = predictObjs(lesionPred, im)
+    bodyParts = predictObjs(segmentPred, im)
+
+    segmentedLesions = associateLesionToBodyPart(lesions, bodyParts)
+    return segmentedLesions
+
+
+def associateLesionToBodyPart(
+    lesions: List[DetectedObject], bodyParts: List[DetectedObject]
+) -> List[Lesion]:
+    lesion_list = []
+    for lesion in lesions:
+        found = False
+        for bodyPart in bodyParts:
+            if isInside(lesion.centroid, lesion.bounding_box, bodyPart.bounding_box):
+                # this lesion is inside this body part!
+                lesion_list.append(
+                    Lesion(
+                        lesion.object_number,
+                        lesion.area,
+                        lesion.centroid,
+                        lesion.bounding_box,
+                        bodyPart.class_tag,
+                    )
+                )
+                found = True
+                break
+        if not found:
+            lesion_list.append(
+                Lesion(
+                    lesion.object_number,
+                    lesion.area,
+                    lesion.centroid,
+                    lesion.bounding_box,
+                    -1,
+                )
+            )
+    return lesion_list
+
+
+def isInside(center: tuple[float], bbox: tuple[int], container: tuple[int]):
+    if not containsPoint(center, container):
+        return False
+
+    # TODO: 90% of the lesion is inside
+    # check if the corner points are inside
+    top_left = (bbox[0], bbox[1])
+    top_right = (bbox[2], bbox[1])
+    bottom_left = (bbox[0], bbox[3])
+    bottom_right = (bbox[2], bbox[3])
+
+    return (
+        containsPoint(top_left, container)
+        and containsPoint(top_right, container)
+        and containsPoint(bottom_left, container)
+        and containsPoint(bottom_right, container)
+    )
+
+
+def containsPoint(pt: tuple[float], box: tuple[int]):
+    return pt[0] <= box[2] and pt[0] >= box[0] and pt[1] >= box[1] and pt[1] <= box[3]
+
+
+def predictObjs(pred: DefaultPredictor, im):
+    outputs = pred(im)
 
     # Convert the predicted mask to a binary mask
     mask = outputs["instances"].pred_masks.to("cpu").numpy().astype(bool)
@@ -130,25 +262,24 @@ def getLesions(image_id: int):
     labeled_mask = label(mask)
     props = regionprops(labeled_mask)
 
-    # Write the object-level information to the CSV file
-    for i, prop in enumerate(props):
-        object_number = i + 1  # Object number starts from 1
-        area = prop.area
-        centroid = prop.centroid
-        bounding_box = prop.bbox
+    # map each object
+    return [propsToDetectedObj(prop, i, class_labels) for i, prop in enumerate(props)]
 
-        # Check if the corresponding class label exists
-        if i < len(class_labels):
-            class_label = class_labels[i]
-            class_name = class_label
-            # class_name = train_metadata.thing_classes[class_label]
-        else:
-            # If class label is not available (should not happen), use 'Unknown' as class name
-            class_name = "Unknown"
 
-        # Write the object-level information to the CSV file
-        print(class_name, object_number, area, centroid, bounding_box)
-    return "Yay!"
+def propsToDetectedObj(prop, idx, labels):
+    object_number = idx + 1  # Object number starts from 1
+    area = prop.area
+    centroid = prop.centroid
+    bounding_box = prop.bbox
+
+    # Check if the corresponding class label exists
+    if idx < len(labels):
+        class_name = labels[idx]
+    else:
+        # If class label is not available (should not happen), use 'Unknown' as class name
+        class_name = -1
+
+    return DetectedObject(object_number, area, centroid, bounding_box, class_name)
 
 
 def get_lesion_predictor():

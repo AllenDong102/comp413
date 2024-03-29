@@ -2,8 +2,10 @@ import logging
 from sqlalchemy import create_engine, String, ForeignKey, Identity, DateTime, func
 from sqlalchemy.orm import DeclarativeBase, Session, Mapped, mapped_column, relationship
 from typing import List
+from dotenv import load_dotenv
 import os
 
+load_dotenv()
 connection_string = (
     "mysql+mysqlconnector://iqe54l4f5bgjh1cboyl2:"
     + os.getenv("DB_PASSWORD")

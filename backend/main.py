@@ -1,11 +1,10 @@
-import asyncio
+import datetime
 import json
 import threading
 from flask import Flask, Response, jsonify, redirect, request, session
 from dotenv import load_dotenv
 from auth import SessionUser
 from api import GetUserResponse, PatientData
-from bkg import celery_init_app
 from db import init, getSession, User, Patient, Image
 from service import (
     createImage,
@@ -41,22 +40,24 @@ CORS(app, supports_credentials=True)
 app.secret_key = (
     b"\x10r=\xf7Z\xbe\xaf2\xc7\xeb\x0b\xab\xda\xb8\xc7\x1a\x96~\x9e\xae\x0bXlk"
 )
+app.config["SESSION_COOKIE_DOMAIN"] = "localhost"
+
 app.config["SESSION_COOKIE_SAMESITE"] = "None"
+app.config["SESSION_COOKIE_SECURE"] = True
 
 init()
-# app.config.from_mapping(
-#     CELERY=dict(
-#         task_ignore_result=True,
-#     ),
-# )
-# celery_app = celery_init_app(app)
-
 login_manager = LoginManager()
 login_manager.init_app(app)
 client = WebApplicationClient(os.getenv("GOOGLE_CLIENT_ID"))
 
 
 config = None
+
+
+@app.before_request
+def before_request():
+    session.permanent = True
+    app.permanent_session_lifetime = datetime.timedelta(minutes=20)
 
 
 def get_google_provider_cfg():
@@ -76,7 +77,8 @@ def load_user(user_id):
 
 @app.route("/")
 def hello_world():
-    return "Hello!"
+    res = Response("hello!")
+    return res
 
 
 # {
@@ -186,6 +188,7 @@ def callback():
     code = request.args.get("code")
     google_provider_cfg = get_google_provider_cfg()
     token_endpoint = google_provider_cfg["token_endpoint"]
+    print("hello 4again")
 
     # Prepare and send a request to get tokens! Yay tokens!
     token_url, headers, body = client.prepare_token_request(
@@ -194,6 +197,7 @@ def callback():
         redirect_url=request.base_url,
         code=code,
     )
+    print("hello 2again")
 
     token_response = requests.post(
         token_url,
@@ -204,6 +208,7 @@ def callback():
 
     # Parse the tokens!
     client.parse_request_body_response(json.dumps(token_response.json()))
+    print("hello again")
 
     # Now that you have tokens (yay) let's find and hit the URL
     # from Google that gives you the user's profile information,
@@ -211,6 +216,7 @@ def callback():
     userinfo_endpoint = google_provider_cfg["userinfo_endpoint"]
     uri, headers, body = client.add_token(userinfo_endpoint)
     userinfo_response = requests.get(uri, headers=headers, data=body)
+    print("hello")
 
     # You want to make sure their email is verified.
     # The user authenticated with Google, authorized your
@@ -223,7 +229,7 @@ def callback():
             # create a user
             print("creating a user! " + res["given_name"])
             existing = createUser(res["given_name"], "doctor", res["sub"])
-
+        print("logging in " + existing.name)
         login_user(SessionUser(existing, True, True, False))
         return redirect(os.getenv("FRONTEND_LOGIN_REDIRECT"))
     else:

@@ -1,5 +1,9 @@
 import io
 from numpy import asarray, float64
+import numpy as np
+import pandas as pd
+import ot
+import scipy
 from db import getSession, User, Patient, Image
 from werkzeug.datastructures import FileStorage
 import boto3
@@ -37,6 +41,19 @@ class DetectedObject:
 
     def __str__(self) -> str:
         return f"DetectedObject(object_number: {self.object_number}, area: {self.area}, centroid: {self.centroid}, bounding_box: {self.bounding_box}, class_tag: {self.class_tag})"
+
+
+class JsonLesion:
+    id: int
+    x: float
+    y: float
+    radius: float
+
+    def __init__(self, id, x, y, radius):
+        self.id = id
+        self.x = x
+        self.y = y
+        self.radius = radius
 
 
 class Lesion:
@@ -296,3 +313,21 @@ def get_segmentation_predictor():
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.2
     cfg.MODEL.WEIGHTS = "./models/segmentation_model/model.pth"
     return DefaultPredictor(cfg)
+
+
+def map_and_match(l1: List[JsonLesion], l2: List[JsonLesion]):
+    distance_matrix = ot.dist(
+        np.array([(l.x, l.y) for l in l1]),
+        np.array([(l.x, l.y) for l in l2]),
+        metric="euclidean",
+    )
+    row_ind, col_ind = scipy.optimize.linear_sum_assignment(distance_matrix)
+
+    pairs = []
+
+    for i in range(len(row_ind)):
+        row = row_ind[i]
+        col = col_ind[i]
+        pairs.append({ "a": l1[row].id, "b": l2[col].id })
+
+    return pairs

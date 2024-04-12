@@ -7,10 +7,12 @@ from auth import SessionUser
 from api import GetUserResponse, PatientData
 from db import init, getSession, User, Patient, Image
 from service import (
+    JsonLesion,
     createImage,
     downloadLesionInfo,
     getImageUrl,
     getLesions,
+    map_and_match,
     uploadImage,
     getUser,
     createUser,
@@ -96,6 +98,26 @@ def run_model():
     img = getImage(id)
 
     return Response(downloadLesionInfo(img), mimetype="application/json")
+
+
+@app.route("/match")
+def match2():
+    idA = int(request.args.get("a"))
+    idB = int(request.args.get("b"))
+    imgA = getImage(idA)
+    imgB = getImage(idB)
+
+    infoA = downloadLesionInfo(imgA)
+    infoB = downloadLesionInfo(imgB)
+    arr1 = json.loads(infoA)["lesions"]
+    arr2 = json.loads(infoB)["lesions"]
+
+    l1 = [JsonLesion(x["id"], x["x"], x["y"], x["radius"]) for x in arr1]
+    l2 = [JsonLesion(x["id"], x["x"], x["y"], x["radius"]) for x in arr2]
+    res = map_and_match(l1, l2)
+    asJson = {"mappings": res}
+
+    return jsonify(asJson)
 
 
 # {

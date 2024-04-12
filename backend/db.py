@@ -7,9 +7,9 @@ import os
 
 load_dotenv()
 connection_string = (
-    "mysql+mysqlconnector://iqe54l4f5bgjh1cboyl2:"
+    "postgresql+psycopg2://postgres.ncqjhzqhntwmwftyfmkz:"
     + os.getenv("DB_PASSWORD")
-    + "@aws.connect.psdb.cloud:3306/comp413"
+    + "@aws-0-us-west-1.pooler.supabase.com:5432/postgres"
 )
 engine = create_engine(connection_string, echo=True)
 

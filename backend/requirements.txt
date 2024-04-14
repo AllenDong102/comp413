@@ -57,7 +57,6 @@ portalocker==2.8.2
 POT==0.9.3
 prompt-toolkit==3.0.43
 protobuf==5.26.0
-psycopg2==2.9.9
 pycocotools==2.0.7
 pyparsing==3.1.2
 python-dateutil==2.8.2

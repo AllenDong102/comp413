@@ -1,4 +1,5 @@
 import io
+import platform
 from numpy import asarray, float64
 import numpy as np
 import pandas as pd
@@ -304,6 +305,8 @@ def get_lesion_predictor():
     cfg.merge_from_file("./models/detection_model/config.yaml")
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.2
     cfg.MODEL.WEIGHTS = "./models/detection_model/model.pth"
+    if platform.system() == "Darwin":
+        cfg.MODEL.DEVICE = "cpu"
     return DefaultPredictor(cfg)
 
 
@@ -312,6 +315,8 @@ def get_segmentation_predictor():
     cfg.merge_from_file("./models/segmentation_model/config.yaml")
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.2
     cfg.MODEL.WEIGHTS = "./models/segmentation_model/model.pth"
+    if platform.system() == "Darwin":
+        cfg.MODEL.DEVICE = "cpu"
     return DefaultPredictor(cfg)
 
 
@@ -328,6 +333,6 @@ def map_and_match(l1: List[JsonLesion], l2: List[JsonLesion]):
     for i in range(len(row_ind)):
         row = row_ind[i]
         col = col_ind[i]
-        pairs.append({ "a": l1[row].id, "b": l2[col].id })
+        pairs.append({"a": l1[row].id, "b": l2[col].id})
 
     return pairs

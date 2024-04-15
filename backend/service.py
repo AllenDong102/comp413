@@ -319,8 +319,9 @@ def get_segmentation_predictor():
         cfg.MODEL.DEVICE = "cpu"
     return DefaultPredictor(cfg)
 
-
 def map_and_match(l1: List[JsonLesion], l2: List[JsonLesion]):
+    len_a = len(l1)
+    len_b = len(l2)
     distance_matrix = ot.dist(
         np.array([(l.x, l.y) for l in l1]),
         np.array([(l.x, l.y) for l in l2]),
@@ -333,6 +334,29 @@ def map_and_match(l1: List[JsonLesion], l2: List[JsonLesion]):
     for i in range(len(row_ind)):
         row = row_ind[i]
         col = col_ind[i]
-        pairs.append({"a": l1[row].id, "b": l2[col].id})
+        pairs.append({"a": l1[row].id, "b": l2[col].id, "distance": distance_matrix[row, col]})
+    
+    unmatched = set()
+    a_set = set(row_ind)
+    b_set = set(col_ind)
+
+    if len_a >= len_b:
+        for i in range(len_a):
+            if i not in b_set:
+                unmatched.add(i)
+    else:
+        for i in range(len_b):
+            if i not in a_set:
+                unmatched.add(i)
+                
+    # change this as necessary, mark pairs that we don't want to match bc distance is too great
+    threshold = 20
+    for pair in pairs:
+        if pair["distance"] > threshold:
+            unmatched.add(pair["a"])
+
+    pairs = [pair for pair in pairs if pair["a"] not in unmatched]
+
+    # return unmatched as well?
 
     return pairs
